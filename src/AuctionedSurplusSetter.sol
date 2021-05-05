@@ -9,12 +9,14 @@ abstract contract OracleRelayerLike {
     function redemptionPrice() virtual external returns (uint256);
 }
 
-contract AuctionedSurplusSetter {
+contract AuctionedSurplusSetter is IncreasingTreasuryReimbursement {
     // --- Variables ---
     // Minimum amount of surplus to sell in one auction
     uint256 public minAuctionedSurplus;                   // [rad]
     // Target value for the amount of surplus to sell
     uint256 public targetValue;                           // [ray]
+    // The min delay between two adjustments of the surplus amount
+    uint256 public updateDelay;                           // [seconds]
     // Last timestamp when the surplus amount was updated
     uint256 public lastUpdateTime;                        // [unix timestamp]
 
@@ -108,16 +110,6 @@ contract AuctionedSurplusSetter {
         if (parameter == "treasury") treasury = StabilityFeeTreasuryLike(addr);
         else revert("AuctionedSurplusSetter/modify-unrecognized-param");
         emit ModifyParameters(parameter, addr);
-    }
-
-    // --- Math ---
-    uint internal constant WAD = 10 ** 18;
-    uint internal constant RAY = 10 ** 27;
-    function multiply(uint256 x, uint256 y) internal pure returns (uint256 z) {
-        require(y == 0 || (z = x * y) / y == x, "AuctionedSurplusSetter/multiply-uint-uint-overflow");
-    }
-    function rdivide(uint x, uint y) public pure returns (uint z) {
-        z = multiply(x, RAY) / y;
     }
 
     // --- Core Logic ---
