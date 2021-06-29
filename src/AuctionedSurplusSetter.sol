@@ -47,7 +47,6 @@ contract AuctionedSurplusSetter is IncreasingTreasuryReimbursement {
         minAuctionedSurplus      = minAuctionedSurplus_;
         updateDelay              = updateDelay_;
         targetValue              = targetValue_;
-        lastUpdateTime           = now;
 
         oracleRelayer            = OracleRelayerLike(oracleRelayer_);
         accountingEngine         = AccountingEngineLike(accountingEngine_);
