@@ -338,6 +338,4 @@ contract AuctionedSurplusSetterTest is DSTest {
 
         assertEq(accountingEngine.surplusAuctionAmountToSell(), ((targetValue_ * RAY) / redemptionPrice) * WAD);
     }
-
-
 }
