@@ -73,9 +73,6 @@ contract FuzzBounds is AuctionedSurplusSetterMock {
         this.modifyParameters("targetValue", targetValue_);
         OracleRelayerMock(address(oracleRelayer)).modifyParameters("redemptionPrice", redemptionPrice);
     }
-
-
-
 }
 
 // @notice Will fuzz the contract and check for invariants/properties
@@ -108,9 +105,35 @@ contract FuzzProperties is AuctionedSurplusSetterMock {
         return minAuctionedSurplus == 50 * WAD;
     }
 
+    function echidna_base_update_caller_reward() public returns (bool) {
+        return baseUpdateCallerReward == 5E18;
+    }
+
+    function echidna_max_update_caller_reward() public returns (bool) {
+        return maxUpdateCallerReward == 10E18;
+    }
+
+    function echidna_per_second_reward_increase() public returns (bool) {
+        return perSecondCallerRewardIncrease == 1000192559420674483977255848;
+    }
+
+    function echidna_max_rewasrd_increase_delay() public returns (bool) {
+        return minAuctionedSurplus == 50 * WAD;
+    }
+
+    function echidna_update_delay() public returns (bool) {
+        return updateDelay == 3600;
+    }
+
     function echidna_recompute_surplus_auctioned() public returns (bool) {
-        if (lastUpdateTime == 0) return true;
-        return AccountingEngineMock(address(accountingEngine)).surplusAuctionAmountToSell() ==
-                                        ((targetValue * RAY) / oracleRelayer.redemptionPrice()) * WAD;
+        if (lastUpdateTime == 0) return true; // not yet updated
+        uint auctionedSurplus = ((targetValue * RAY) / oracleRelayer.redemptionPrice()) * WAD;
+        auctionedSurplus = auctionedSurplus < minAuctionedSurplus ? minAuctionedSurplus : auctionedSurplus;
+        return AccountingEngineMock(address(accountingEngine)).surplusAuctionAmountToSell() == auctionedSurplus;
+    }
+
+    function echidna_surplus_auctined_bounds() public returns (bool) {
+        if (lastUpdateTime == 0) return true; // not yet updated
+        return AccountingEngineMock(address(accountingEngine)).surplusAuctionAmountToSell() >= minAuctionedSurplus;
     }
 }

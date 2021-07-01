@@ -113,8 +113,13 @@ Several of the failures are expected, known limitations of safeMath, as follows:
 - getCallerReward (previously tested on the ```increasingTreasuryReimbursement```)
 - wdivide
 
-None other calls failed.
+The call to recomputeSurplusAmountAuctioned failed with these parameters:
+fuzz_params(47916265891128888918622939068852463954986419576320732,115838038528814585204844706750205778109531377501224)
 
+redemptionPrice: 47,916,265,891,128,888,918,622,939,068,852,463.954986419576320732
+targetValue: 115,838,038,528,814,585,204,844.706750205778109531377501224
+
+Bounds are plentiful, the system under normal conditions will never get close to these numbers.
 
 ### Conclusion: No exceptions found.
 
@@ -122,30 +127,32 @@ None other calls failed.
 
 In this case we setup an environment and test for properties.
 
-The globalDebt in SAFEEngine is fuzzed in between calls (haphazardly) so we have different scenarios where the surplus buffer is calculated.
+The redemptionPrice is fuzzed in between calls (haphazardly) so we have different scenarios where the surplus buffer is calculated.
 
 Here we are not looking for bounds, but instead checking the properties that either should remain constant, or that move as the auction evolves:
 
-- stopAdjustments
 - updateDelay
-- minimumBufferSize
-- maximumBufferSize
-- minimumGlobalDebtChange
-- coveredDebt
-- surplus buffer calculation
-- surplus buffer setting in AccountingEngine
+- reward parameters
+- minAuctionSurplus
+- surplus auctioned calculation
+- surplus auctioned bounds
+- parameter change on accounting engine
 
 These properties are verified in between all calls.
 
 ```
-Analyzing contract: /Users/fabio/Documents/reflexer/geb-auto-surplus-buffer/src/test/fuzz/AutoSurplusBufferSetterFuzz.sol:FuzzProperties
-echidna_surplusBufferAdjustment: passed! 🎉
-echidna_minimumGlobalDebtChange: passed! 🎉
-echidna_stopAdjustments: passed! 🎉
-echidna_maximumBufferSize: passed! 🎉
-echidna_minimumBufferSize: passed! 🎉
-echidna_updateDelay: passed! 🎉
-echidna_coveredDebt: passed! 🎉
+Analyzing contract: /Users/fabio/Documents/reflexer/geb-auto-surplus-auctioned/src/test/fuzz/AuctionedSurplusSetterFuzz.sol:FuzzProperties
+echidna_per_second_reward_increase: passed! 🎉
+echidna_surplus_auctined_bounds: passed! 🎉
+echidna_min_auction_surplus: passed! 🎉
+echidna_base_update_caller_reward: passed! 🎉
+echidna_max_rewasrd_increase_delay: passed! 🎉
+echidna_update_delay: passed! 🎉
+echidna_recompute_surplus_auctioned: passed! 🎉
+echidna_max_update_caller_reward: passed! 🎉
+
+Seed: 6334703906048037817
+
 ```
 
 #### Conclusion: No exceptions found.
