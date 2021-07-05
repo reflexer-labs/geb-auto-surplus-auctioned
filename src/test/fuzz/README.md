@@ -1,6 +1,6 @@
 # Security Tests
 
-The contracts in this folder are the fuzz scripts for the the Auto Surplus Buffer.
+The contracts in this folder are the fuzz scripts for the the Auto Surplus Auctioned.
 
 To run the fuzzer, set up Echidna (https://github.com/crytic/echidna).
 
