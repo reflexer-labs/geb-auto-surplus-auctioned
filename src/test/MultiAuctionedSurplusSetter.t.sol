@@ -4,7 +4,7 @@ import "ds-test/test.sol";
 import "ds-token/token.sol";
 
 import "./mock/MockTreasury.sol";
-import "../AuctionedSurplusSetter.sol";
+import "../MultiAuctionedSurplusSetter.sol";
 
 abstract contract Hevm {
     function warp(uint256) virtual public;
@@ -30,22 +30,25 @@ contract Feed {
 contract AccountingEngine {
     uint256 public surplusAuctionAmountToSell;
 
-    function modifyParameters(bytes32 parameter, uint data) external {
+    function modifyParameters(bytes32, bytes32 parameter, uint data) external {
         if (parameter == "surplusAuctionAmountToSell") surplusAuctionAmountToSell = data;
     }
 }
 contract OracleRelayer {
-    uint256 public redemptionPrice = 3 ether;
+    uint256 price = 3 ether;
 
+    function redemptionPrice(bytes32) public returns (uint256) {
+        return price;
+    }
     function modifyParameters(bytes32 parameter, uint data) external {
-        if (parameter == "redemptionPrice") redemptionPrice = data;
+        if (parameter == "redemptionPrice") price = data;
     }
 }
 
 contract Caller {
-    AuctionedSurplusSetter setter;
+    MultiAuctionedSurplusSetter setter;
 
-    constructor (AuctionedSurplusSetter add) public {
+    constructor (MultiAuctionedSurplusSetter add) public {
         setter = add;
     }
 
@@ -70,17 +73,17 @@ contract Caller {
     }
 }
 
-contract AuctionedSurplusSetterTest is DSTest {
+contract MultiAuctionedSurplusSetterTest is DSTest {
     Hevm hevm;
 
     DSToken systemCoin;
 
     Feed sysCoinFeed;
 
-    AuctionedSurplusSetter setter;
+    MultiAuctionedSurplusSetter setter;
     AccountingEngine accountingEngine;
     OracleRelayer oracleRelayer;
-    MockTreasury treasury;
+    MultiMockTreasury treasury;
     Caller caller;
 
     uint256 constant RAY = 10 ** 27;
@@ -95,18 +98,21 @@ contract AuctionedSurplusSetterTest is DSTest {
 
     uint256 coinsToMint = 1E40;
 
+    bytes32 coinName = "BAI";
+
     function setUp() public {
         hevm = Hevm(0x7109709ECfa91a80626fF3989D68f67F5b1DD12D);
         hevm.warp(604411200);
 
         systemCoin = new DSToken("RAI", "RAI");
-        treasury = new MockTreasury(address(systemCoin));
+        treasury = new MultiMockTreasury(address(systemCoin));
         accountingEngine = new AccountingEngine();
         oracleRelayer = new OracleRelayer();
 
         sysCoinFeed = new Feed(2.015 ether, true);
 
-        setter = new AuctionedSurplusSetter(
+        setter = new MultiAuctionedSurplusSetter(
+            coinName,
             address(treasury),
             address(oracleRelayer),
             address(accountingEngine),
@@ -120,8 +126,8 @@ contract AuctionedSurplusSetterTest is DSTest {
 
         systemCoin.mint(address(treasury), coinsToMint);
 
-        treasury.setTotalAllowance(address(setter), uint(-1));
-        treasury.setPerBlockAllowance(address(setter), 10E45);
+        treasury.setTotalAllowance(coinName, address(setter), uint(-1));
+        treasury.setPerBlockAllowance(coinName, address(setter), 10E45);
 
         caller = new Caller(setter);
     }
@@ -130,6 +136,7 @@ contract AuctionedSurplusSetterTest is DSTest {
         assertTrue(address(setter.treasury()) == address(treasury));
         assertTrue(address(setter.accountingEngine()) == address(accountingEngine));
         assertTrue(address(setter.oracleRelayer()) == address(oracleRelayer));
+        assertEq(setter.coinName(), coinName);
         assertEq(setter.authorizedAccounts(address(this)), 1);
         assertEq(setter.minAuctionedSurplus(), minAuctionedSurplus);
         assertEq(setter.targetValue(), targetValue);
@@ -141,7 +148,8 @@ contract AuctionedSurplusSetterTest is DSTest {
     }
 
     function testFail_setup_null_oracle_relayer() public {
-        setter = new AuctionedSurplusSetter(
+        setter = new MultiAuctionedSurplusSetter(
+            coinName,
             address(treasury),
             address(0),
             address(accountingEngine),
@@ -154,7 +162,8 @@ contract AuctionedSurplusSetterTest is DSTest {
         );
     }
     function testFail_setup_null_accounting_engine() public {
-        setter = new AuctionedSurplusSetter(
+        setter = new MultiAuctionedSurplusSetter(
+            coinName,
             address(treasury),
             address(oracleRelayer),
             address(0),
@@ -167,7 +176,8 @@ contract AuctionedSurplusSetterTest is DSTest {
         );
     }
     function testFail_setup_invalid_min_surplus() public {
-        setter = new AuctionedSurplusSetter(
+        setter = new MultiAuctionedSurplusSetter(
+            coinName,
             address(treasury),
             address(oracleRelayer),
             address(accountingEngine),
@@ -180,7 +190,8 @@ contract AuctionedSurplusSetterTest is DSTest {
         );
     }
     function testFail_setup_invalid_target_value() public {
-        setter = new AuctionedSurplusSetter(
+        setter = new MultiAuctionedSurplusSetter(
+            coinName,
             address(treasury),
             address(oracleRelayer),
             address(accountingEngine),
@@ -193,7 +204,8 @@ contract AuctionedSurplusSetterTest is DSTest {
         );
     }
     function testFail_setup_invalid_update_delay() public {
-        setter = new AuctionedSurplusSetter(
+        setter = new MultiAuctionedSurplusSetter(
+            coinName,
             address(treasury),
             address(oracleRelayer),
             address(accountingEngine),
@@ -303,7 +315,7 @@ contract AuctionedSurplusSetterTest is DSTest {
         caller.doRecomputeSurplusAmountAuctioned();
         assertEq(systemCoin.balanceOf(address(caller)), baseUpdateCallerReward);
         assertEq(setter.lastUpdateTime(), now);
-        assertEq(accountingEngine.surplusAuctionAmountToSell(), ((targetValue * RAY) / oracleRelayer.redemptionPrice()) * WAD);
+        assertEq(accountingEngine.surplusAuctionAmountToSell(), ((targetValue * RAY) / oracleRelayer.redemptionPrice(coinName)) * WAD);
     }
 
     function test_recompute_surplus_amount_auctioned_other_reward() public {
@@ -311,7 +323,7 @@ contract AuctionedSurplusSetterTest is DSTest {
         setter.recomputeSurplusAmountAuctioned(address(0xfab));
         assertEq(systemCoin.balanceOf(address(0xfab)), baseUpdateCallerReward);
         assertEq(setter.lastUpdateTime(), now);
-        assertEq(accountingEngine.surplusAuctionAmountToSell(), ((targetValue * RAY) / oracleRelayer.redemptionPrice()) * WAD);
+        assertEq(accountingEngine.surplusAuctionAmountToSell(), ((targetValue * RAY) / oracleRelayer.redemptionPrice(coinName)) * WAD);
     }
 
     function testFail_recompute_surplus_amount_auctioned_same_block() public {
