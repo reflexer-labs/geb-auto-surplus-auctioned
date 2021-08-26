@@ -1,4 +1,4 @@
-pragma solidity 0.6.7;
+/* pragma solidity 0.6.7;
 
 import "ds-test/test.sol";
 import "ds-token/token.sol";
@@ -350,4 +350,4 @@ contract MultiAuctionedSurplusSetterTest is DSTest {
 
         assertEq(accountingEngine.surplusAuctionAmountToSell(), ((targetValue_ * RAY) / redemptionPrice) * WAD);
     }
-}
+} */

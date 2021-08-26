@@ -1,4 +1,4 @@
-pragma solidity ^0.6.7;
+pragma solidity 0.6.7;
 
 import "geb-treasury-reimbursement/reimbursement/single/IncreasingTreasuryReimbursement.sol";
 
@@ -12,18 +12,27 @@ abstract contract OracleRelayerLike {
 contract AuctionedSurplusSetter is IncreasingTreasuryReimbursement {
     // --- Variables ---
     // Minimum amount of surplus to sell in one auction
-    uint256 public minAuctionedSurplus;                   // [rad]
+    uint256 public minAuctionedSurplus;                                  // [rad]
     // Target value for the amount of surplus to sell
-    uint256 public targetValue;                           // [ray]
+    uint256 public targetValue;                                          // [ray]
     // The min delay between two adjustments of the surplus amount
-    uint256 public updateDelay;                           // [seconds]
+    uint256 public updateDelay;                                          // [seconds]
     // Last timestamp when the surplus amount was updated
-    uint256 public lastUpdateTime;                        // [unix timestamp]
+    uint256 public lastUpdateTime;                                       // [unix timestamp]
+    // Delay between two consecutive inflation related updates
+    uint256 public targetValueInflationDelay;
+    // The target inflation applied to targetValue
+    uint256 public targetValueTargetInflation;
+    // The last time when inflation was applied to the target value
+    uint256 public targetValueInflationUpdateTime;                       // [unix timestamp]
 
     // Accounting engine contract
     AccountingEngineLike public accountingEngine;
     // The oracle relayer contract
     OracleRelayerLike    public oracleRelayer;
+
+    // Max inflation per period
+    uint256 public constant MAX_INFLATION = 50;
 
     // --- Events ---
     event RecomputeSurplusAmountAuctioned(uint256 surplusToSell);
@@ -44,12 +53,15 @@ contract AuctionedSurplusSetter is IncreasingTreasuryReimbursement {
         require(targetValue_ > 0, "AuctionedSurplusSetter/invalid-target-value");
         require(updateDelay_ > 0, "AuctionedSurplusSetter/null-update-delay");
 
-        minAuctionedSurplus      = minAuctionedSurplus_;
-        updateDelay              = updateDelay_;
-        targetValue              = targetValue_;
+        minAuctionedSurplus            = minAuctionedSurplus_;
+        updateDelay                    = updateDelay_;
+        targetValue                    = targetValue_;
+        targetValueTargetInflation     = 0;
+        targetValueInflationDelay      = uint(-1) / 2;
+        targetValueInflationUpdateTime = now;
 
-        oracleRelayer            = OracleRelayerLike(oracleRelayer_);
-        accountingEngine         = AccountingEngineLike(accountingEngine_);
+        oracleRelayer                  = OracleRelayerLike(oracleRelayer_);
+        accountingEngine               = AccountingEngineLike(accountingEngine_);
 
         emit ModifyParameters("minAuctionedSurplus", minAuctionedSurplus);
         emit ModifyParameters("targetValue", targetValue);
@@ -59,6 +71,21 @@ contract AuctionedSurplusSetter is IncreasingTreasuryReimbursement {
     // --- Boolean Logic ---
     function both(bool x, bool y) internal pure returns (bool z) {
       assembly{ z := and(x, y)}
+    }
+
+    // --- Math ---
+    uint internal constant HUNDRED  = 100;
+
+    function rpower(uint256 x, uint256 n) internal pure returns (uint256 z) {
+        z = n % 2 != 0 ? x : RAY;
+
+        for (n /= 2; n != 0; n /= 2) {
+            x = rmultiply(x, x);
+
+            if (n % 2 != 0) {
+                z = rmultiply(z, x);
+            }
+        }
     }
 
     // --- Administration ---
@@ -96,6 +123,18 @@ contract AuctionedSurplusSetter is IncreasingTreasuryReimbursement {
           require(val > 0, "AuctionedSurplusSetter/null-update-delay");
           updateDelay = val;
         }
+        else if (parameter == "targetValueInflationUpdateTime") {
+          require(both(val >= targetValueInflationUpdateTime, val <= now), "AuctionedSurplusSetter/invalid-inflation-update-time");
+          targetValueInflationUpdateTime = val;
+        }
+        else if (parameter == "targetValueInflationDelay") {
+          require(val <= uint(-1) / 2, "AuctionedSurplusSetter/invalid-inflation-delay");
+          targetValueInflationDelay = val;
+        }
+        else if (parameter == "targetValueTargetInflation") {
+          require(val <= MAX_INFLATION, "AuctionedSurplusSetter/invalid-target-inflation");
+          targetValueTargetInflation = val;
+        }
         else revert("AuctionedSurplusSetter/modify-unrecognized-param");
         emit ModifyParameters(parameter, val);
     }
@@ -123,6 +162,9 @@ contract AuctionedSurplusSetter is IncreasingTreasuryReimbursement {
         // Store the timestamp of the update
         lastUpdateTime = now;
 
+        // Apply inflation
+        applyInflation();
+
         // Calculate the new amount to sell
         uint256 surplusToSell = multiply(rdivide(targetValue, oracleRelayer.redemptionPrice()), WAD);
         surplusToSell         = (surplusToSell < minAuctionedSurplus) ? minAuctionedSurplus : surplusToSell;
@@ -135,5 +177,17 @@ contract AuctionedSurplusSetter is IncreasingTreasuryReimbursement {
 
         // Pay the caller for updating the rate
         rewardCaller(feeReceiver, callerReward);
+    }
+
+    // --- Internal Logic ---
+    /*
+    * @notice Automatically apply inflation to the targetValue
+    */
+    function applyInflation() internal {
+        uint256 updateSlots = subtract(now, targetValueInflationUpdateTime) / targetValueInflationDelay;
+        if (updateSlots == 0) return;
+
+        targetValueInflationUpdateTime = addition(targetValueInflationUpdateTime, multiply(updateSlots, targetValueInflationDelay));
+        targetValue = multiply(targetValue, rpower((HUNDRED + targetValueTargetInflation), updateSlots)) / rpower(HUNDRED, updateSlots);
     }
 }
