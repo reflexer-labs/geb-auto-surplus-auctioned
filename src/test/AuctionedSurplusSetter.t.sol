@@ -1,4 +1,4 @@
-/* pragma solidity 0.6.7;
+pragma solidity 0.6.7;
 
 import "ds-test/test.sol";
 import "ds-token/token.sol";
@@ -92,6 +92,7 @@ contract AuctionedSurplusSetterTest is DSTest {
     uint256 baseUpdateCallerReward = 5E18;
     uint256 maxUpdateCallerReward  = 10E18;
     uint256 perSecondCallerRewardIncrease = 1000192559420674483977255848; // 100% per hour
+    uint256 maxRewardIncreaseDelay = 3 hours;
 
     uint256 coinsToMint = 1E40;
 
@@ -138,6 +139,9 @@ contract AuctionedSurplusSetterTest is DSTest {
         assertEq(setter.perSecondCallerRewardIncrease(), perSecondCallerRewardIncrease);
         assertEq(setter.updateDelay(), updateDelay);
         assertEq(setter.maxRewardIncreaseDelay(), uint(-1));
+        assertEq(setter.targetValueInflationUpdateTime(), now);
+        assertEq(setter.targetValueInflationDelay(), uint(-1) / 2);
+        assertEq(setter.targetValueTargetInflation(), 0);
     }
 
     function testFail_setup_null_oracle_relayer() public {
@@ -248,6 +252,17 @@ contract AuctionedSurplusSetterTest is DSTest {
 
         setter.modifyParameters("treasury", address(4));
         assertEq(address(setter.treasury()), address(4));
+
+        hevm.warp(now + 5);
+
+        setter.modifyParameters("targetValueInflationUpdateTime", now - 1);
+        assertEq(setter.targetValueInflationUpdateTime(), now - 1);
+
+        setter.modifyParameters("targetValueInflationDelay", uint(-1) / 2);
+        assertEq(setter.targetValueInflationDelay(), uint(-1) / 2);
+
+        setter.modifyParameters("targetValueTargetInflation", 7);
+        assertEq(setter.targetValueTargetInflation(), 7);
     }
 
     function testFail_modify_parameters_null_address() public {
@@ -276,6 +291,22 @@ contract AuctionedSurplusSetterTest is DSTest {
 
     function testFail_modify_parameters_null_target_value() public {
         setter.modifyParameters("targetValue", 0);
+    }
+
+    function testFail_modify_parameters_large_targetValueInflationUpdateTime() public {
+        setter.modifyParameters("targetValueInflationUpdateTime", now + 1);
+    }
+
+    function testFail_modify_parameters_small_targetValueInflationUpdateTime() public {
+        setter.modifyParameters("targetValueInflationUpdateTime", setter.targetValueInflationUpdateTime() - 1);
+    }
+
+    function testFail_modify_parameters_large_targetValueInflationDelay() public {
+        setter.modifyParameters("targetValueInflationDelay", uint(-1) / 2 + 1);
+    }
+
+    function testFail_modify_parameters_large_targetValueTargetInflation() public {
+        setter.modifyParameters("targetValueTargetInflation", setter.MAX_INFLATION() + 1);
     }
 
     function testFail_modify_parameters_invalid_max_update_caller_reward() public {
@@ -338,4 +369,72 @@ contract AuctionedSurplusSetterTest is DSTest {
 
         assertEq(accountingEngine.surplusAuctionAmountToSell(), ((targetValue_ * RAY) / redemptionPrice) * WAD);
     }
-} */
+
+    function test_recompute_once_with_inflation() public {
+        setter.modifyParameters("targetValueInflationDelay", 1 days);
+        setter.modifyParameters("targetValueTargetInflation", 10);
+
+        uint currentTargetValue = setter.targetValue();
+
+        hevm.warp(now + 1 hours);
+        caller.doRecomputeSurplusAmountAuctioned();
+        assertEq(setter.targetValueInflationUpdateTime(), now - 1 hours);
+
+        hevm.warp(now + 23 hours);
+        caller.doRecomputeSurplusAmountAuctioned();
+        assertEq(setter.targetValueInflationUpdateTime(), now);
+
+        assertEq(setter.targetValue(), currentTargetValue + currentTargetValue * 10 / 100);
+    }
+
+    function test_recompute_first_update_with_inflation_large_delay() public {
+        setter.modifyParameters("targetValueInflationDelay", 1 days);
+        setter.modifyParameters("targetValueTargetInflation", 10);
+
+        uint currentTargetValue = setter.targetValue();
+
+        hevm.warp(now + 10 days);
+        caller.doRecomputeSurplusAmountAuctioned();
+        assertEq(setter.targetValueInflationUpdateTime(), now);
+    }
+
+    function test_multi_recompute_with_inflation() public {
+        setter.modifyParameters("maxRewardIncreaseDelay", maxRewardIncreaseDelay);
+
+        setter.modifyParameters("targetValueInflationDelay", 1 days);
+        setter.modifyParameters("targetValueTargetInflation", 10);
+
+        uint currentTargetValue = setter.targetValue();
+
+        hevm.warp(now + 1 hours);
+        caller.doRecomputeSurplusAmountAuctioned();
+        assertEq(setter.targetValueInflationUpdateTime(), now - 1 hours);
+
+        hevm.warp(now + 95 hours);
+        caller.doRecomputeSurplusAmountAuctioned();
+        assertEq(setter.targetValueInflationUpdateTime(), now);
+
+        for (uint i = 0; i < 4; i++) {
+            currentTargetValue = currentTargetValue + currentTargetValue / 100 * 10;
+        }
+
+        assertEq(setter.targetValue(), currentTargetValue);
+    }
+
+    function testFail_multi_recompute_large_delay() public {
+        setter.modifyParameters("maxRewardIncreaseDelay", maxRewardIncreaseDelay);
+
+        setter.modifyParameters("targetValueInflationDelay", 1 days);
+        setter.modifyParameters("targetValueTargetInflation", 10);
+
+        uint currentTargetValue = setter.targetValue();
+
+        hevm.warp(now + 1 hours);
+        caller.doRecomputeSurplusAmountAuctioned();
+        assertEq(setter.targetValueInflationUpdateTime(), now - 1 hours);
+
+        hevm.warp(now + 3650 days);
+        caller.doRecomputeSurplusAmountAuctioned();
+        assertEq(setter.targetValueInflationUpdateTime(), now);
+    }
+}

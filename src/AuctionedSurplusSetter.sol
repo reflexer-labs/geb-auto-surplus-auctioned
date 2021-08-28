@@ -50,7 +50,7 @@ contract AuctionedSurplusSetter is IncreasingTreasuryReimbursement {
     ) public IncreasingTreasuryReimbursement(treasury_, baseUpdateCallerReward_, maxUpdateCallerReward_, perSecondCallerRewardIncrease_) {
         require(both(oracleRelayer_ != address(0), accountingEngine_ != address(0)), "AuctionedSurplusSetter/invalid-core-contracts");
         require(minAuctionedSurplus_ > 0, "AuctionedSurplusSetter/invalid-min-auctioned-surplus");
-        require(targetValue_ > 0, "AuctionedSurplusSetter/invalid-target-value");
+        require(targetValue_ >= 100, "AuctionedSurplusSetter/invalid-target-value");
         require(updateDelay_ > 0, "AuctionedSurplusSetter/null-update-delay");
 
         minAuctionedSurplus            = minAuctionedSurplus_;
@@ -76,18 +76,6 @@ contract AuctionedSurplusSetter is IncreasingTreasuryReimbursement {
     // --- Math ---
     uint internal constant HUNDRED  = 100;
 
-    function rpower(uint256 x, uint256 n) internal pure returns (uint256 z) {
-        z = n % 2 != 0 ? x : RAY;
-
-        for (n /= 2; n != 0; n /= 2) {
-            x = rmultiply(x, x);
-
-            if (n % 2 != 0) {
-                z = rmultiply(z, x);
-            }
-        }
-    }
-
     // --- Administration ---
     /*
     * @notify Modify an uint256 parameter
@@ -100,7 +88,7 @@ contract AuctionedSurplusSetter is IncreasingTreasuryReimbursement {
           minAuctionedSurplus = val;
         }
         else if (parameter == "targetValue") {
-          require(val > 0, "AuctionedSurplusSetter/null-target-value");
+          require(val >= 100, "AuctionedSurplusSetter/null-target-value");
           targetValue = val;
         }
         else if (parameter == "baseUpdateCallerReward") {
@@ -188,6 +176,9 @@ contract AuctionedSurplusSetter is IncreasingTreasuryReimbursement {
         if (updateSlots == 0) return;
 
         targetValueInflationUpdateTime = addition(targetValueInflationUpdateTime, multiply(updateSlots, targetValueInflationDelay));
-        targetValue = multiply(targetValue, rpower((HUNDRED + targetValueTargetInflation), updateSlots)) / rpower(HUNDRED, updateSlots);
+
+        for (uint i = 0; i < updateSlots; i++) {
+            targetValue = addition(targetValue, multiply(targetValue / 100, targetValueTargetInflation));
+        }
     }
 }
