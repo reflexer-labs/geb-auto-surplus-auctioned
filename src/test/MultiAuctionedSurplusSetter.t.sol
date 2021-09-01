@@ -1,4 +1,4 @@
-/* pragma solidity 0.6.7;
+pragma solidity 0.6.7;
 
 import "ds-test/test.sol";
 import "ds-token/token.sol";
@@ -95,6 +95,7 @@ contract MultiAuctionedSurplusSetterTest is DSTest {
     uint256 baseUpdateCallerReward = 5E18;
     uint256 maxUpdateCallerReward  = 10E18;
     uint256 perSecondCallerRewardIncrease = 1000192559420674483977255848; // 100% per hour
+    uint256 maxRewardIncreaseDelay = 3 hours;
 
     uint256 coinsToMint = 1E40;
 
@@ -341,7 +342,7 @@ contract MultiAuctionedSurplusSetterTest is DSTest {
 
     function test_recompute_surplus_amount_auctioned_fuzz(uint redemptionPrice, uint targetValue_) public {
         redemptionPrice = redemptionPrice % 100000 ether + 1;
-        targetValue_    = targetValue_ % 100000 * RAY + 1;
+        targetValue_    = targetValue_ % 100000 * RAY + 100;
 
         setter.modifyParameters("targetValue", targetValue_);
         oracleRelayer.modifyParameters("redemptionPrice", redemptionPrice);
@@ -350,4 +351,72 @@ contract MultiAuctionedSurplusSetterTest is DSTest {
 
         assertEq(accountingEngine.surplusAuctionAmountToSell(), ((targetValue_ * RAY) / redemptionPrice) * WAD);
     }
-} */
+
+    function test_recompute_once_with_inflation() public {
+        setter.modifyParameters("targetValueInflationDelay", 1 days);
+        setter.modifyParameters("targetValueTargetInflation", 10);
+
+        uint currentTargetValue = setter.targetValue();
+
+        hevm.warp(now + 1 hours);
+        caller.doRecomputeSurplusAmountAuctioned();
+        assertEq(setter.targetValueInflationUpdateTime(), now - 1 hours);
+
+        hevm.warp(now + 23 hours);
+        caller.doRecomputeSurplusAmountAuctioned();
+        assertEq(setter.targetValueInflationUpdateTime(), now);
+
+        assertEq(setter.targetValue(), currentTargetValue + currentTargetValue * 10 / 100);
+    }
+
+    function test_recompute_first_update_with_inflation_large_delay() public {
+        setter.modifyParameters("targetValueInflationDelay", 1 days);
+        setter.modifyParameters("targetValueTargetInflation", 10);
+
+        uint currentTargetValue = setter.targetValue();
+
+        hevm.warp(now + 10 days);
+        caller.doRecomputeSurplusAmountAuctioned();
+        assertEq(setter.targetValueInflationUpdateTime(), now);
+    }
+
+    function test_multi_recompute_with_inflation() public {
+        setter.modifyParameters("maxRewardIncreaseDelay", maxRewardIncreaseDelay);
+
+        setter.modifyParameters("targetValueInflationDelay", 1 days);
+        setter.modifyParameters("targetValueTargetInflation", 10);
+
+        uint currentTargetValue = setter.targetValue();
+
+        hevm.warp(now + 1 hours);
+        caller.doRecomputeSurplusAmountAuctioned();
+        assertEq(setter.targetValueInflationUpdateTime(), now - 1 hours);
+
+        hevm.warp(now + 95 hours);
+        caller.doRecomputeSurplusAmountAuctioned();
+        assertEq(setter.targetValueInflationUpdateTime(), now);
+
+        for (uint i = 0; i < 4; i++) {
+            currentTargetValue = currentTargetValue + currentTargetValue / 100 * 10;
+        }
+
+        assertEq(setter.targetValue(), currentTargetValue);
+    }
+
+    function testFail_multi_recompute_large_delay() public {
+        setter.modifyParameters("maxRewardIncreaseDelay", maxRewardIncreaseDelay);
+
+        setter.modifyParameters("targetValueInflationDelay", 1 days);
+        setter.modifyParameters("targetValueTargetInflation", 10);
+
+        uint currentTargetValue = setter.targetValue();
+
+        hevm.warp(now + 1 hours);
+        caller.doRecomputeSurplusAmountAuctioned();
+        assertEq(setter.targetValueInflationUpdateTime(), now - 1 hours);
+
+        hevm.warp(now + 3650 days);
+        caller.doRecomputeSurplusAmountAuctioned();
+        assertEq(setter.targetValueInflationUpdateTime(), now);
+    }
+}

@@ -360,7 +360,7 @@ contract AuctionedSurplusSetterTest is DSTest {
 
     function test_recompute_surplus_amount_auctioned_fuzz(uint redemptionPrice, uint targetValue_) public {
         redemptionPrice = redemptionPrice % 100000 ether + 1;
-        targetValue_    = targetValue_ % 100000 * RAY + 1;
+        targetValue_    = targetValue_ % 100000 * RAY + 100;
 
         setter.modifyParameters("targetValue", targetValue_);
         oracleRelayer.modifyParameters("redemptionPrice", redemptionPrice);

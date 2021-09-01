@@ -1,15 +1,15 @@
-pragma solidity ^0.6.7;
+pragma solidity 0.6.7;
 
-import "geb-treasury-reimbursement/reimbursement/multi/MultiIncreasingTreasuryReimbursement.sol";
+import "./IncreasingTreasuryReimbursementMock.sol";
 
 abstract contract AccountingEngineLike {
-    function modifyParameters(bytes32, bytes32, uint256) virtual external;
+    function modifyParameters(bytes32, uint256) virtual external;
 }
 abstract contract OracleRelayerLike {
-    function redemptionPrice(bytes32) virtual external returns (uint256);
+    function redemptionPrice() virtual external returns (uint256);
 }
 
-contract MultiAuctionedSurplusSetter is MultiIncreasingTreasuryReimbursement {
+contract AuctionedSurplusSetterMock is IncreasingTreasuryReimbursementMock {
     // --- Variables ---
     // Minimum amount of surplus to sell in one auction
     uint256 public minAuctionedSurplus;                                  // [rad]
@@ -38,7 +38,6 @@ contract MultiAuctionedSurplusSetter is MultiIncreasingTreasuryReimbursement {
     event RecomputeSurplusAmountAuctioned(uint256 surplusToSell);
 
     constructor(
-      bytes32 coinName_,
       address treasury_,
       address oracleRelayer_,
       address accountingEngine_,
@@ -48,11 +47,11 @@ contract MultiAuctionedSurplusSetter is MultiIncreasingTreasuryReimbursement {
       uint256 baseUpdateCallerReward_,
       uint256 maxUpdateCallerReward_,
       uint256 perSecondCallerRewardIncrease_
-    ) public MultiIncreasingTreasuryReimbursement(coinName_, treasury_, baseUpdateCallerReward_, maxUpdateCallerReward_, perSecondCallerRewardIncrease_) {
-        require(both(oracleRelayer_ != address(0), accountingEngine_ != address(0)), "MultiAuctionedSurplusSetter/invalid-core-contracts");
-        require(minAuctionedSurplus_ > 0, "MultiAuctionedSurplusSetter/invalid-min-auctioned-surplus");
-        require(targetValue_ > 0, "MultiAuctionedSurplusSetter/invalid-target-value");
-        require(updateDelay_ > 0, "MultiAuctionedSurplusSetter/null-update-delay");
+    ) public IncreasingTreasuryReimbursementMock(treasury_, baseUpdateCallerReward_, maxUpdateCallerReward_, perSecondCallerRewardIncrease_) {
+        require(both(oracleRelayer_ != address(0), accountingEngine_ != address(0)), "AuctionedSurplusSetter/invalid-core-contracts");
+        require(minAuctionedSurplus_ > 0, "AuctionedSurplusSetter/invalid-min-auctioned-surplus");
+        require(targetValue_ >= 100, "AuctionedSurplusSetter/invalid-target-value");
+        require(updateDelay_ > 0, "AuctionedSurplusSetter/null-update-delay");
 
         minAuctionedSurplus            = minAuctionedSurplus_;
         updateDelay                    = updateDelay_;
@@ -77,18 +76,6 @@ contract MultiAuctionedSurplusSetter is MultiIncreasingTreasuryReimbursement {
     // --- Math ---
     uint internal constant HUNDRED  = 100;
 
-    function rpower(uint256 x, uint256 n) internal pure returns (uint256 z) {
-        z = n % 2 != 0 ? x : RAY;
-
-        for (n /= 2; n != 0; n /= 2) {
-            x = rmultiply(x, x);
-
-            if (n % 2 != 0) {
-                z = rmultiply(z, x);
-            }
-        }
-    }
-
     // --- Administration ---
     /*
     * @notify Modify an uint256 parameter
@@ -97,46 +84,46 @@ contract MultiAuctionedSurplusSetter is MultiIncreasingTreasuryReimbursement {
     */
     function modifyParameters(bytes32 parameter, uint256 val) external isAuthorized {
         if (parameter == "minAuctionedSurplus") {
-          require(val > 0, "MultiAuctionedSurplusSetter/null-min-auctioned-amount");
+          require(val > 0, "AuctionedSurplusSetter/null-min-auctioned-amount");
           minAuctionedSurplus = val;
         }
         else if (parameter == "targetValue") {
-          require(val >= 100, "MultiAuctionedSurplusSetter/null-target-value");
+          require(val >= 100, "AuctionedSurplusSetter/null-target-value");
           targetValue = val;
         }
         else if (parameter == "baseUpdateCallerReward") {
-          require(val <= maxUpdateCallerReward, "MultiAuctionedSurplusSetter/invalid-min-reward");
+          require(val <= maxUpdateCallerReward, "AuctionedSurplusSetter/invalid-min-reward");
           baseUpdateCallerReward = val;
         }
         else if (parameter == "maxUpdateCallerReward") {
-          require(val >= baseUpdateCallerReward, "MultiAuctionedSurplusSetter/invalid-max-reward");
+          require(val >= baseUpdateCallerReward, "AuctionedSurplusSetter/invalid-max-reward");
           maxUpdateCallerReward = val;
         }
         else if (parameter == "perSecondCallerRewardIncrease") {
-          require(val >= RAY, "MultiAuctionedSurplusSetter/invalid-reward-increase");
+          require(val >= RAY, "AuctionedSurplusSetter/invalid-reward-increase");
           perSecondCallerRewardIncrease = val;
         }
         else if (parameter == "maxRewardIncreaseDelay") {
-          require(val > 0, "MultiAuctionedSurplusSetter/invalid-max-increase-delay");
+          require(val > 0, "AuctionedSurplusSetter/invalid-max-increase-delay");
           maxRewardIncreaseDelay = val;
         }
         else if (parameter == "updateDelay") {
-          require(val > 0, "MultiAuctionedSurplusSetter/null-update-delay");
+          require(val > 0, "AuctionedSurplusSetter/null-update-delay");
           updateDelay = val;
         }
         else if (parameter == "targetValueInflationUpdateTime") {
-          require(both(val >= targetValueInflationUpdateTime, val <= now), "MultiAuctionedSurplusSetter/invalid-inflation-update-time");
+          require(both(val >= targetValueInflationUpdateTime, val <= now), "AuctionedSurplusSetter/invalid-inflation-update-time");
           targetValueInflationUpdateTime = val;
         }
         else if (parameter == "targetValueInflationDelay") {
-          require(val <= uint(-1) / 2, "MultiAuctionedSurplusSetter/invalid-inflation-delay");
+          require(val <= uint(-1) / 2, "AuctionedSurplusSetter/invalid-inflation-delay");
           targetValueInflationDelay = val;
         }
         else if (parameter == "targetValueTargetInflation") {
-          require(val <= MAX_INFLATION, "MultiAuctionedSurplusSetter/invalid-target-inflation");
+          require(val <= MAX_INFLATION, "AuctionedSurplusSetter/invalid-target-inflation");
           targetValueTargetInflation = val;
         }
-        else revert("MultiAuctionedSurplusSetter/modify-unrecognized-param");
+        else revert("AuctionedSurplusSetter/modify-unrecognized-param");
         emit ModifyParameters(parameter, val);
     }
     /*
@@ -145,9 +132,9 @@ contract MultiAuctionedSurplusSetter is MultiIncreasingTreasuryReimbursement {
     * @param addr The new address for the parameter
     */
     function modifyParameters(bytes32 parameter, address addr) external isAuthorized {
-        require(addr != address(0), "MultiAuctionedSurplusSetter/null-address");
+        require(addr != address(0), "AuctionedSurplusSetter/null-address");
         if (parameter == "treasury") treasury = StabilityFeeTreasuryLike(addr);
-        else revert("MultiAuctionedSurplusSetter/modify-unrecognized-param");
+        else revert("AuctionedSurplusSetter/modify-unrecognized-param");
         emit ModifyParameters(parameter, addr);
     }
 
@@ -157,7 +144,7 @@ contract MultiAuctionedSurplusSetter is MultiIncreasingTreasuryReimbursement {
     */
     function recomputeSurplusAmountAuctioned(address feeReceiver) public {
         // Check delay between calls
-        require(either(subtract(now, lastUpdateTime) >= updateDelay, lastUpdateTime == 0), "MultiAuctionedSurplusSetter/wait-more");
+        require(either(subtract(now, lastUpdateTime) >= updateDelay, lastUpdateTime == 0), "AuctionedSurplusSetter/wait-more");
         // Get the caller's reward
         uint256 callerReward = getCallerReward(lastUpdateTime, updateDelay);
         // Store the timestamp of the update
@@ -167,11 +154,11 @@ contract MultiAuctionedSurplusSetter is MultiIncreasingTreasuryReimbursement {
         applyInflation();
 
         // Calculate the new amount to sell
-        uint256 surplusToSell = multiply(rdivide(targetValue, oracleRelayer.redemptionPrice(coinName)), WAD);
+        uint256 surplusToSell = multiply(rdivide(targetValue, oracleRelayer.redemptionPrice()), WAD);
         surplusToSell         = (surplusToSell < minAuctionedSurplus) ? minAuctionedSurplus : surplusToSell;
 
         // Set the new amount
-        accountingEngine.modifyParameters(coinName, "surplusAuctionAmountToSell", surplusToSell);
+        accountingEngine.modifyParameters("surplusAuctionAmountToSell", surplusToSell);
 
         // Emit an event
         emit RecomputeSurplusAmountAuctioned(surplusToSell);
@@ -194,12 +181,4 @@ contract MultiAuctionedSurplusSetter is MultiIncreasingTreasuryReimbursement {
             targetValue = addition(targetValue, multiply(targetValue / 100, targetValueTargetInflation));
         }
     }
-
-    // function applyInflation() internal {
-    //     uint256 updateSlots = subtract(now, targetValueInflationUpdateTime) / targetValueInflationDelay;
-    //     if (updateSlots == 0) return;
-
-    //     targetValueInflationUpdateTime = addition(targetValueInflationUpdateTime, multiply(updateSlots, targetValueInflationDelay));
-    //     targetValue = multiply(targetValue, rpower((HUNDRED + targetValueTargetInflation), updateSlots)) / rpower(HUNDRED, updateSlots);
-    // }
 }
